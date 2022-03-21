@@ -1,6 +1,11 @@
-use std::io::{Write};
+use rand::Rng;
+use std::io::Write;
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 fn main() {
-    let dict_path = "/home/sjet/Documents/wordle_all.txt";
+    let dict_path = "wordle_dict.txt";
+    let argc: usize = std::env::args().len();
+    let args: Vec<String> = std::env::args().collect();
+
     let mut candidates: Vec<String> = Vec::new();
     if let Ok(file) = std::fs::read(dict_path) {
         if let Ok(content) = String::from_utf8(file) {
@@ -13,15 +18,46 @@ fn main() {
 
     println!("Loaded {} candidate words", candidates.len());
 
-    // println!("Secret:");
+    if argc == 2 && args[1] == "-p" {
+        wordle_play(candidates);
+    } else {
+        wordle_helper(candidates);
+    }
+}
 
-    // let mut secret = String::new();
-    // let secret = if let Ok(_) = std::io::stdin().read_line(&mut secret) {
-    //     String::from(secret.trim())
-    // } else {
-    //     return;
-    // };
+fn wordle_match(input: &String, candidate: &String) -> String {
+    let mut cnt: std::collections::HashMap<char, i32> = std::collections::HashMap::new();
 
+    let mut result = vec!['.'; 5];
+    for (i, (w, c)) in std::iter::zip(input.chars(), candidate.chars()).enumerate() {
+        let count = cnt.entry(w).or_insert(0);
+        if w == c {
+            result[i] = '1';
+            *count += 1;
+        } else {
+            let mut no = *count + 1;
+            for (j, k) in candidate.chars().enumerate() {
+                if k == w {
+                    no = if i != j && no > 0 { no - 1 } else { no };
+                }
+            }
+            result[i] = if no > 0 { '0' } else { '.' };
+            *count += 1;
+        }
+    }
+    return result.into_iter().collect();
+}
+
+fn wordle_if_match(input: &String, output: &String, candidate: String) -> Option<String> {
+    let result = wordle_match(input, &candidate);
+    return if result == *output {
+        Some(candidate)
+    } else {
+        None
+    };
+}
+
+fn wordle_helper(mut candidates: Vec<String>) {
     for i in 1..7 {
         let mut next_candidates: Vec<String> = Vec::new();
 
@@ -48,7 +84,7 @@ fn main() {
         loop {
             if let Some(candidate) = candidates.pop() {
                 if candidate.len() == 5 {
-                    if let Some(cand) = wordle_match(&guess, &result, candidate) {
+                    if let Some(cand) = wordle_if_match(&guess, &result, candidate) {
                         next_candidates.push(cand);
                     }
                 }
@@ -78,40 +114,69 @@ fn main() {
             } else {
                 return;
             };
-
             if show == 'y' {
                 println!("{:?}", next_candidates);
             }
         }
-
         candidates = next_candidates;
     }
 }
 
-fn wordle_match(input: &String, output: &String, candidate: String) -> Option<String> {
-    let mut cnt: std::collections::HashMap<char, i32> = std::collections::HashMap::new();
+fn wordle_play(candidate: Vec<String>) -> bool {
+    let length = candidate.len();
+    let sn: usize = rand::thread_rng().gen_range(0..length);
+    let secret: &String = &candidate[sn];
+    let gotcha = String::from("11111");
 
-    let mut result = vec!['.'; 5];
-    for (i, (w, c)) in std::iter::zip(input.chars(), candidate.chars()).enumerate() {
-        let count = cnt.entry(w).or_insert(0);
-        if w == c {
-            result[i] = '1';
-            *count += 1;
+    let mut stdout = StandardStream::stdout(ColorChoice::Always);
+
+    let mut green = ColorSpec::new();
+    let green = green.set_fg(Some(Color::White));
+    let green = green.set_bg(Some(Color::Green));
+
+    let mut gray = ColorSpec::new();
+    let gray = gray.set_fg(Some(Color::White));
+    let gray = gray.set_bg(Some(Color::Rgb(76, 74, 72)));
+
+    let mut yellow = ColorSpec::new();
+    let yellow = yellow.set_fg(Some(Color::White));
+    let yellow = yellow.set_bg(Some(Color::Yellow));
+
+    for i in 1..7 {
+        print!("{}th guess: ", i);
+        std::io::stdout().flush().unwrap();
+        let mut guess = String::new();
+        let guess = if let Ok(_) = std::io::stdin().read_line(&mut guess) {
+            String::from(guess.trim())
         } else {
-            let mut no = *count + 1;
-            for (j, k) in candidate.chars().enumerate() {
-                if k == w {
-                    no = if i != j && no > 0 { no - 1 } else { no };
+            eprint!("Failed to read input");
+            return false;
+        };
+        let result = wordle_match(&guess, &secret);
+        for (c, r) in std::iter::zip(guess.chars(), result.chars()) {
+            match r {
+                '1' => {
+                    if let Ok(_) = stdout.set_color(green) {};
+                    print!("{}", c);
+                }
+                '0' => {
+                    if let Ok(_) = stdout.set_color(gray) {};
+                    print!("{}", c);
+                }
+                _ => {
+                    if let Ok(_) = stdout.set_color(yellow) {};
+                    print!("{}", c);
                 }
             }
-            result[i] = if no > 0 { '0' } else { '.' };
-            *count += 1;
+            std::io::stdout().flush().unwrap();
+        }
+        if let Ok(_) = stdout.reset() {};
+        println!();
+        if result == gotcha {
+            println!("Congratulations!");
+            return true;
         }
     }
-    let result: String = result.into_iter().collect();
-    if result == *output {
-        Some(candidate)
-    } else {
-        None
-    }
+    println!("You lost![{}]", secret);
+    return false;
 }

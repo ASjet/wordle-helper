@@ -16,7 +16,13 @@ fn main() {
         }
     }
 
-    println!("Loaded {} candidate words", candidates.len());
+    let cl = candidates.len();
+    if cl > 0 {
+        println!("Loaded {} candidate words", cl);
+    } else {
+        println!("Unable to load dictionary.\nPlease check if 'wordle_dict.txt' exist.");
+        return;
+    }
 
     if argc == 2 && args[1] == "-p" {
         wordle_play(candidates);
